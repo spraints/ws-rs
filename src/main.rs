@@ -8,16 +8,23 @@ fn main() {
     }
 }
 
-#[derive(Default)]
 struct Machine {
-    memory: [i32; 0],
+    memory: [i32; 4000],
     addr: usize,
     print_mode: PrintMode,
 }
 
-#[derive(Default)]
+impl Default for Machine {
+    fn default() -> Self {
+        Self {
+            memory: [0; 4000],
+            addr: 0,
+            print_mode: PrintMode::Decimal,
+        }
+    }
+}
+
 enum PrintMode {
-    #[default]
     Decimal,
     ASCII,
 }
@@ -80,24 +87,19 @@ impl Machine {
 
 fn run(mut m: Machine, r: impl Read) -> Result<(), Box<dyn Error>> {
     let r = BufReader::new(r);
-    let mut register = None;
+    let mut next_command = None;
     for l in r.lines() {
-        match parse(&l?)? {
-            Some(Syntax::Spaces(count)) => expect_none(register.replace(count))?,
-            Some(Syntax::Tabs(count)) => m.apply(count, register.take())?,
-            None => {}
+        match (next_command.take(), parse(&l?)?) {
+            (Some(cmd), Some(Syntax::Spaces(val))) => m.apply(cmd, Some(val))?,
+            (None, Some(Syntax::Tabs(val))) if val == 9 || val == 10 => m.apply(val, None)?,
+            (None, Some(Syntax::Tabs(val))) => next_command = Some(val),
+            (a, b) => return Err(format!("unexpected {b:?} after {a:?}").into()),
         };
     }
     Ok(())
 }
 
-fn expect_none(o: Option<impl Debug>) -> Result<(), String> {
-    match o {
-        None => Ok(()),
-        Some(x) => Err(format!("expected none but got some({x:?})")),
-    }
-}
-
+#[derive(Debug)]
 enum Syntax {
     Spaces(usize),
     Tabs(usize),
